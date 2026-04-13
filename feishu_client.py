@@ -35,6 +35,36 @@ def get_tenant_access_token(app_id: str, app_secret: str) -> str:
     return body["tenant_access_token"]
 
 
+def normalize_field_value(value) -> str:
+    if value is None:
+        return ""
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+
+    if isinstance(value, (int, float, str)):
+        return str(value)
+
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            normalized = normalize_field_value(item)
+            if normalized:
+                parts.append(normalized)
+        return ", ".join(parts)
+
+    if isinstance(value, dict):
+        if "value" in value:
+            return normalize_field_value(value["value"])
+        if "text" in value and value["text"] is not None:
+            return str(value["text"])
+        if "name" in value and value["name"] is not None:
+            return str(value["name"])
+        return ""
+
+    return str(value)
+
+
 def search_record_by_cas(
     tenant_access_token: str,
     app_token: str,
@@ -90,6 +120,10 @@ def search_record_by_cas(
             continue
         fields = item.get("fields")
         if isinstance(fields, dict):
-            records.append(fields)
+            normalized_fields = {
+                field_name: normalize_field_value(field_value)
+                for field_name, field_value in fields.items()
+            }
+            records.append(normalized_fields)
 
     return records

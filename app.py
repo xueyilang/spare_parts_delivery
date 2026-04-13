@@ -147,14 +147,7 @@ def lookup_cas():
     for record_fields_dict in record_fields:
         record_obj = {}
         for trengo_key, feishu_field_name in FIELD_MAPPING.items():
-            raw_value = record_fields_dict.get(feishu_field_name, "")
-            if raw_value is None:
-                raw_value = ""
-            elif isinstance(raw_value, bool):
-                raw_value = "true" if raw_value else "false"
-            elif not isinstance(raw_value, str):
-                raw_value = str(raw_value)
-            record_obj[trengo_key] = raw_value
+            record_obj[trengo_key] = record_fields_dict.get(feishu_field_name, "")
         records_data.append(record_obj)
 
     response_items.append({"key": "records", "value": records_data})
