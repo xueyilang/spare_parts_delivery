@@ -50,11 +50,17 @@
 
 ## 字段映射配置
 
-项目内置示例映射：
+项目内置映射（Trengo 变量名 -> 飞书表格字段名）：
 
-- `status` -> `Status`
-- `customer` -> `Customer`
-- `country` -> `Country`
+- `ticket_number` -> `Ticket Number` (客诉号)
+- `sn_for_shipment` -> `SN for Shipment` (实际拣货SN)
+- `item_name` -> `Item Name` (发货备件信息)
+- `quantity` -> `Quantity` (发货数量)
+- `logistics_status` -> `Logistics Status` (物流状态)
+- `freight_forwarder` -> `Freight Forwarder` (货代/售后物流发货)
+- `tracking_number` -> `Tracking Number` (物流单号/发货)
+- `sn_for_system_of_ticket` -> `SN for System of Ticket` (客诉系统序列号)
+- `work_order` -> `Work Order` (工单号)
 
 如果飞书多维表格中的字段名不同，请在 `app.py` 中的 `FIELD_MAPPING` 字典里修改。
 

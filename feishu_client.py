@@ -70,14 +70,14 @@ def search_record_by_cas(
     data = body.get("data") or {}
     items = data.get("items")
     if not items or not isinstance(items, list):
-        return None
+        return []
 
-    first_item = items[0]
-    if not isinstance(first_item, dict):
-        return None
+    records = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        fields = item.get("fields")
+        if isinstance(fields, dict):
+            records.append(fields)
 
-    fields = first_item.get("fields")
-    if not isinstance(fields, dict):
-        return None
-
-    return fields
+    return records

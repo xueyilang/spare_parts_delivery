@@ -16,9 +16,15 @@ logging.basicConfig(
 logger = logging.getLogger("trengo_feishu_service")
 
 FIELD_MAPPING = {
-    "status": "Status",
-    "customer": "Customer",
-    "country": "Country",
+    "ticket_number": "客诉号 Ticket Number",
+    "work_order": "工单号 Work Order",
+    "sn_for_system_of_ticket": "客诉系统序列号 SN for System of Ticket",
+    "item_name": "发货备件信息 Item Name",
+    "quantity": "发货数量 Quantity",
+    "sn_for_shipment": "实际拣货SN (SN for Shipment)",
+    "tracking_number": "物流单号(发货) Tracking Number",
+    "logistics_status": "物流状态 Logistics Status",
+    "freight_forwarder": "货代（售后物流发货）Freight Forwarder",
 }
 
 app = Flask(__name__)
@@ -122,22 +128,28 @@ def lookup_cas():
             {"key": "cas", "value": cas},
         ]), 200
 
-    logger.info("Matched record found for CAS: %s", cas)
+    logger.info("Matched %d record(s) for CAS: %s", len(record_fields), cas)
     response_items = [
         {"key": "cas_found", "value": "yes"},
         {"key": "cas", "value": cas},
+        {"key": "record_count", "value": str(len(record_fields))},
     ]
 
-    for trengo_key, feishu_field_name in FIELD_MAPPING.items():
-        raw_value = record_fields.get(feishu_field_name, "")
-        if raw_value is None:
-            raw_value = ""
-        elif isinstance(raw_value, bool):
-            raw_value = "true" if raw_value else "false"
-        elif not isinstance(raw_value, str):
-            raw_value = str(raw_value)
+    records_data = []
+    for record_idx, record_fields_dict in enumerate(record_fields):
+        record_obj = {}
+        for trengo_key, feishu_field_name in FIELD_MAPPING.items():
+            raw_value = record_fields_dict.get(feishu_field_name, "")
+            if raw_value is None:
+                raw_value = ""
+            elif isinstance(raw_value, bool):
+                raw_value = "true" if raw_value else "false"
+            elif not isinstance(raw_value, str):
+                raw_value = str(raw_value)
+            record_obj[trengo_key] = raw_value
+        records_data.append(record_obj)
 
-        response_items.append({"key": trengo_key, "value": raw_value})
+    response_items.append({"key": "records", "value": records_data})
 
     return jsonify(response_items), 200
 
