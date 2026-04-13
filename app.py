@@ -11,7 +11,7 @@ load_dotenv()
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s"
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
 logger = logging.getLogger("trengo_feishu_service")
 
@@ -104,11 +104,17 @@ def lookup_cas():
         feishu_app_secret = get_env_variable("FEISHU_APP_SECRET")
         feishu_app_token = get_env_variable("FEISHU_APP_TOKEN")
         feishu_table_id = get_env_variable("FEISHU_TABLE_ID")
+        feishu_search_field_name = os.getenv(
+            "FEISHU_SEARCH_FIELD_NAME",
+            "客诉号 Ticket Number",
+        )
+
         tenant_access_token = get_tenant_access_token(feishu_app_id, feishu_app_secret)
         record_fields = search_record_by_cas(
             tenant_access_token,
             feishu_app_token,
             feishu_table_id,
+            feishu_search_field_name,
             cas,
         )
     except ValueError as exc:
@@ -123,10 +129,12 @@ def lookup_cas():
 
     if not record_fields:
         logger.info("No matching record found for CAS: %s", cas)
-        return jsonify([
-            {"key": "cas_found", "value": "no"},
-            {"key": "cas", "value": cas},
-        ]), 200
+        return jsonify(
+            [
+                {"key": "cas_found", "value": "no"},
+                {"key": "cas", "value": cas},
+            ]
+        ), 200
 
     logger.info("Matched %d record(s) for CAS: %s", len(record_fields), cas)
     response_items = [
@@ -136,7 +144,7 @@ def lookup_cas():
     ]
 
     records_data = []
-    for record_idx, record_fields_dict in enumerate(record_fields):
+    for record_fields_dict in record_fields:
         record_obj = {}
         for trengo_key, feishu_field_name in FIELD_MAPPING.items():
             raw_value = record_fields_dict.get(feishu_field_name, "")

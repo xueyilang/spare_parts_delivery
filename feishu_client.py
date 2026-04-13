@@ -1,10 +1,11 @@
 import logging
+
 import requests
 
 logger = logging.getLogger("trengo_feishu_service.feishu_client")
 
 TOKEN_URL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal/"
-BITABLE_QUERY_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/query"
+BITABLE_SEARCH_URL = "https://open.feishu.cn/open-apis/bitable/v1/apps/{app_token}/tables/{table_id}/records/search"
 
 
 def get_tenant_access_token(app_id: str, app_secret: str) -> str:
@@ -38,15 +39,26 @@ def search_record_by_cas(
     tenant_access_token: str,
     app_token: str,
     table_id: str,
+    search_field_name: str,
     cas: str,
-) -> dict | None:
-    url = BITABLE_QUERY_URL.format(app_token=app_token, table_id=table_id)
+) -> list[dict]:
+    url = BITABLE_SEARCH_URL.format(app_token=app_token, table_id=table_id)
     headers = {
         "Authorization": f"Bearer {tenant_access_token}",
         "Content-Type": "application/json",
     }
     payload = {
-        "filter": f'CAS = "{cas}"',
+        "filter": {
+            "conjunction": "and",
+            "conditions": [
+                {
+                    "field_name": search_field_name,
+                    "operator": "is",
+                    "value": [cas],
+                }
+            ],
+        },
+        "page_size": 1,
     }
 
     try:
