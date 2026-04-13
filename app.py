@@ -67,6 +67,52 @@ def authorize_request():
     return None
 
 
+def map_record_fields(record_fields: dict) -> dict:
+    mapped = {}
+    for output_key, feishu_field_name in FIELD_MAPPING.items():
+        mapped[output_key] = record_fields.get(feishu_field_name, "")
+    return mapped
+
+
+def build_single_record_message(cas: str, record: dict) -> str:
+    return (
+        f"我找到了与 {cas} 相关的发货信息："
+        f"工单号 {record.get('work_order', '')}，"
+        f"产品 {record.get('item_name', '')}，"
+        f"数量 {record.get('quantity', '')}，"
+        f"发货 SN 为 {record.get('sn_for_shipment', '') or '无'}，"
+        f"物流单号 {record.get('tracking_number', '') or '无'}，"
+        f"当前物流状态为 {record.get('logistics_status', '') or '未知'}，"
+        f"承运商为 {record.get('freight_forwarder', '') or '无'}。"
+    )
+
+
+def build_multiple_records_message(cas: str, records: list[dict]) -> str:
+    lines = [f"我找到了与 {cas} 相关的 {len(records)} 条记录："]
+    for index, record in enumerate(records, start=1):
+        line = (
+            f"{index}. 工单号 {record.get('work_order', '')}，"
+            f"产品 {record.get('item_name', '')}，"
+            f"数量 {record.get('quantity', '')}，"
+            f"发货 SN {record.get('sn_for_shipment', '') or '无'}，"
+            f"物流单号 {record.get('tracking_number', '') or '无'}，"
+            f"状态 {record.get('logistics_status', '') or '未知'}，"
+            f"承运商 {record.get('freight_forwarder', '') or '无'}。"
+        )
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def build_ai_message(cas: str, mapped_records: list[dict]) -> str:
+    if not mapped_records:
+        return f"未找到与 {cas} 相关的发货记录。请确认 CAS 编号是否正确。"
+
+    if len(mapped_records) == 1:
+        return build_single_record_message(cas, mapped_records[0])
+
+    return build_multiple_records_message(cas, mapped_records)
+
+
 @app.route("/", methods=["GET"])
 def health_check():
     return jsonify({"status": "ok"}), 200
@@ -127,32 +173,11 @@ def lookup_cas():
         logger.exception("Unexpected error while processing CAS lookup")
         return make_json_error("Internal server error", 500)
 
-    if not record_fields:
-        logger.info("No matching record found for CAS: %s", cas)
-        return jsonify(
-            [
-                {"key": "cas_found", "value": "no"},
-                {"key": "cas", "value": cas},
-            ]
-        ), 200
+    mapped_records = [map_record_fields(record) for record in record_fields]
+    ai_message = build_ai_message(cas, mapped_records)
 
-    logger.info("Matched %d record(s) for CAS: %s", len(record_fields), cas)
-    response_items = [
-        {"key": "cas_found", "value": "yes"},
-        {"key": "cas", "value": cas},
-        {"key": "record_count", "value": str(len(record_fields))},
-    ]
-
-    records_data = []
-    for record_fields_dict in record_fields:
-        record_obj = {}
-        for trengo_key, feishu_field_name in FIELD_MAPPING.items():
-            record_obj[trengo_key] = record_fields_dict.get(feishu_field_name, "")
-        records_data.append(record_obj)
-
-    response_items.append({"key": "records", "value": records_data})
-
-    return jsonify(response_items), 200
+    logger.info("Returning ai_message for CAS %s", cas)
+    return jsonify({"ai_message": ai_message}), 200
 
 
 if __name__ == "__main__":
