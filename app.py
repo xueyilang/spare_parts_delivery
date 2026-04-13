@@ -17,11 +17,6 @@ logger = logging.getLogger("trengo_feishu_service")
 
 FIELD_MAPPING = {
     "ticket_number": "客诉号 Ticket Number",
-    "work_order": "工单号 Work Order",
-    "sn_for_system_of_ticket": "客诉系统序列号 SN for System of Ticket",
-    "item_name": "发货备件信息 Item Name",
-    "quantity": "发货数量 Quantity",
-    "sn_for_shipment": "实际拣货SN (SN for Shipment)",
     "tracking_number": "物流单号(发货) Tracking Number",
     "logistics_status": "物流状态 Logistics Status",
     "freight_forwarder": "货代（售后物流发货）Freight Forwarder",
@@ -76,11 +71,7 @@ def map_record_fields(record_fields: dict) -> dict:
 
 def build_single_record_message(cas: str, record: dict) -> str:
     return (
-        f"我找到了与 {cas} 相关的发货信息："
-        f"工单号 {record.get('work_order', '')}，"
-        f"产品 {record.get('item_name', '')}，"
-        f"数量 {record.get('quantity', '')}，"
-        f"发货 SN 为 {record.get('sn_for_shipment', '') or '无'}，"
+        f"我找到了与 {cas} 相关的物流信息："
         f"物流单号 {record.get('tracking_number', '') or '无'}，"
         f"当前物流状态为 {record.get('logistics_status', '') or '未知'}，"
         f"承运商为 {record.get('freight_forwarder', '') or '无'}。"
@@ -88,14 +79,10 @@ def build_single_record_message(cas: str, record: dict) -> str:
 
 
 def build_multiple_records_message(cas: str, records: list[dict]) -> str:
-    lines = [f"我找到了与 {cas} 相关的 {len(records)} 条记录："]
+    lines = [f"我找到了与 {cas} 相关的 {len(records)} 条物流记录："]
     for index, record in enumerate(records, start=1):
         line = (
-            f"{index}. 工单号 {record.get('work_order', '')}，"
-            f"产品 {record.get('item_name', '')}，"
-            f"数量 {record.get('quantity', '')}，"
-            f"发货 SN {record.get('sn_for_shipment', '') or '无'}，"
-            f"物流单号 {record.get('tracking_number', '') or '无'}，"
+            f"{index}. 物流单号 {record.get('tracking_number', '') or '无'}，"
             f"状态 {record.get('logistics_status', '') or '未知'}，"
             f"承运商 {record.get('freight_forwarder', '') or '无'}。"
         )
@@ -105,7 +92,7 @@ def build_multiple_records_message(cas: str, records: list[dict]) -> str:
 
 def build_ai_message(cas: str, mapped_records: list[dict]) -> str:
     if not mapped_records:
-        return f"未找到与 {cas} 相关的发货记录。请确认 CAS 编号是否正确。"
+        return f"未找到与 {cas} 相关的物流记录。请确认 CAS 编号是否正确。"
 
     if len(mapped_records) == 1:
         return build_single_record_message(cas, mapped_records[0])
