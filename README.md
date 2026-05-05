@@ -1,193 +1,110 @@
 # Trengo 与飞书多维表格中间层服务
 
-这是一个最小可用的 Python HTTP 服务，用于让 Trengo 通过 `POST /lookup-cas` 查询飞书多维表格中的 CAS 记录，并返回 Trengo 可直接使用的 JSON 变量数组。
-
-## 目标
-
-- Trengo 发送 `cas` 到服务
-- 服务负责获取飞书 `tenant_access_token`
-- 服务查询飞书多维表格中的记录
-- 服务返回 Trengo 友好的 JSON 数组
-- 环境变量驱动配置，不将密钥写入代码
+让 Trengo 通过 `POST /lookup-cas` 查询飞书多维表格中的物流记录，返回英文自然语言文本供 Trengo AI 使用，面向欧洲安装商。
 
 ## 项目结构
 
-- `app.py` - 主 Flask 服务入口
-- `feishu_client.py` - 飞书 token 获取与多维表格查询封装
+- `app.py` - Flask 服务入口，鉴权、字段映射、值清洗、消息构建
+- `feishu_client.py` - 飞书 API 封装（token 获取、多维表格查询）
+- `test_regression.py` - 回归测试（84+ 用例）
 - `requirements.txt` - Python 依赖
-- `.python-version` - Python 版本说明
 - `.env.example` - 环境变量示例
-- `README.md` - 项目说明文档
 
-## 主要接口
+## 接口
 
-### 健康检查
+### `GET /` — 健康检查
 
-- `GET /`
-- 返回 `200` 和 JSON `{"status":"ok"}`
+返回 `{"status": "ok"}`，状态码 200。
 
-### 核心查询
+### `POST /lookup-cas` — 核心查询
 
-- `POST /lookup-cas`
-- 请求头必须包含：`Authorization: Bearer <shared_secret>`
-- 请求体必须是 JSON，包含字段：`cas`
-- 如果找到记录，返回 `200` 与字段映射后的数组
-- 如果未找到记录，返回 `200` 与 `cas_found=no`
-- 如果请求无效或鉴权失败，返回 `400`/`401`
+请求头：
+- `Authorization: Bearer <TRANGO_SHARED_SECRET>`
+- `Content-Type: application/json`
 
-## 环境变量说明
+请求体：`{"cas": "CAS-123456"}`
 
-请在 Render 或本地环境中设置以下变量：
+响应：`{"ai_message": "..."}`
 
-- `FEISHU_APP_ID` - 飞书自建应用 `app_id`
-- `FEISHU_APP_SECRET` - 飞书自建应用 `app_secret`
-- `FEISHU_APP_TOKEN` - 飞书多维表格 `app_token`
-- `FEISHU_TABLE_ID` - 飞书多维表格 `table_id`
-- `TRANGO_SHARED_SECRET` - Trengo 与本服务共享的 Bearer 密钥
-- `PORT` - 可选，Flask 本地启动端口，默认 `5000`
+## 消息逻辑
 
-> `PYTHON_VERSION` 可选，仅用于备注，不会被代码读取。
+| 场景 | 输出示例 |
+|---|---|
+| 未找到 | `No logistics record found for CAS CAS-00000000.` |
+| 状态 ≠ Shipped（已取消/未处理） | `Status: Shipment cancelled.` |
+| 已发货 + 有物流单号 | `Tracking number: 60104324929, Status: Shipped, Forwarder: GLS.` |
+| 已发货 + 无物流单号 | `Tracking number: not available, Status: Shipped, Forwarder: NTS-Logistik Partner.` |
+| 已发货 + 多物流单号 | `Tracking number: 60105718349, 60105859391, Status: Shipped, Forwarder: GLS.` |
 
-## 字段映射配置
+## 字段映射
 
-项目内置映射（Trengo 变量名 -> 飞书表格字段名）：
+| Trengo 变量名 | 飞书表格字段名 |
+|---|---|
+| `tracking_number` | 物流单号(发货) Tracking Number |
+| `logistics_status` | 物流状态 Logistics Status |
+| `freight_forwarder` | 货代（售后物流发货）Freight Forwarder |
 
-- `ticket_number` -> `Ticket Number` (客诉号)
-- `sn_for_shipment` -> `SN for Shipment` (实际拣货SN)
-- `item_name` -> `Item Name` (发货备件信息)
-- `quantity` -> `Quantity` (发货数量)
-- `logistics_status` -> `Logistics Status` (物流状态)
-- `freight_forwarder` -> `Freight Forwarder` (货代/售后物流发货)
-- `tracking_number` -> `Tracking Number` (物流单号/发货)
-- `sn_for_system_of_ticket` -> `SN for System of Ticket` (客诉系统序列号)
-- `work_order` -> `Work Order` (工单号)
+## 字段值清洗
 
-如果飞书多维表格中的字段名不同，请在 `app.py` 中的 `FIELD_MAPPING` 字典里修改。
+服务自动处理飞书表格中的中英混合值和占位符：
 
-如果字段在飞书记录中不存在，服务会返回空字符串而不会报错。
+- **状态**：`"已发货 Shipped"` → `"Shipped"`，`"已取消 Shipment cancelled"` → `"Shipment cancelled"`
+- **物流单号**：提取纯数字，过滤占位符（`NTS物流`、`Selbstabholung`、`LHZ-DPD`），支持一字段多个单号
+- **承运商**：`"安装商或客户自提"` → `"Self pick-up"`
+
+## 环境变量
+
+必填：
+- `FEISHU_APP_ID` - 飞书自建应用 app_id
+- `FEISHU_APP_SECRET` - 飞书自建应用 app_secret
+- `FEISHU_APP_TOKEN` - 飞书多维表格 app_token
+- `FEISHU_TABLE_ID` - 飞书多维表格 table_id
+- `TRANGO_SHARED_SECRET` - Trengo 与本服务的共享 Bearer 密钥
+
+可选：
+- `FEISHU_SEARCH_FIELD_NAME` - CAS 查询字段名，默认 `"客诉号 Ticket Number"`
+- `PORT` - 本地端口，默认 `5000`
+- `LOG_LEVEL` - 日志级别，默认 `INFO`
 
 ## 本地运行
 
-1. 克隆仓库到本地
-2. 创建虚拟环境
-
 ```bash
 python -m venv .venv
-source .venv/bin/activate   # macOS / Linux
-.venv\Scripts\activate    # Windows
-```
+source .venv/bin/activate       # macOS / Linux
+.venv\Scripts\activate          # Windows
 
-3. 安装依赖
-
-```bash
 pip install -r requirements.txt
-```
-
-4. 复制环境变量文件
-
-```bash
-copy .env.example .env
-```
-
-5. 编辑 `.env`，填入真实值
-
-6. 启动服务
-
-```bash
+cp .env.example .env            # 编辑 .env 填入真实值
 python app.py
 ```
 
-7. 测试接口
+测试接口：
 
 ```bash
 curl -X POST http://127.0.0.1:5000/lookup-cas \
-  -H "Authorization: Bearer your-secret" \
+  -H "Authorization: Bearer <secret>" \
   -H "Content-Type: application/json" \
-  -d '{"cas":"CAS-123456"}'
+  -d '{"cas":"CAS-145296"}'
+```
+
+## 运行测试
+
+```bash
+python test_regression.py
 ```
 
 ## Render 部署
 
-请使用 Render Web Service 部署，本项目无需 Docker：
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `gunicorn app:app`
+- Region: Frankfurt（面向欧洲）
+- 在 Render Dashboard → Environment 中添加上述环境变量
 
-- 连接 Git 仓库
-- Environment 选择 `Python`
-- Build Command:
+## 错误码
 
-```bash
-pip install -r requirements.txt
-```
-
-- Start Command:
-
-```bash
-gunicorn app:app
-```
-
-然后在 Render 控制台中配置上述环境变量。
-
-> Render 成功部署后会提供一个公网 URL，可直接供 Trengo 调用。
-
-## Trengo 调用示例
-
-```json
-POST /lookup-cas HTTP/1.1
-Host: your-service-url
-Authorization: Bearer your-secret
-Content-Type: application/json
-
-{
-  "cas": "CAS-123456"
-}
-```
-
-## 示例响应
-
-### 找到记录
-
-```json
-[
-  { "key": "cas_found", "value": "yes" },
-  { "key": "cas", "value": "CAS-123456" },
-  { "key": "status", "value": "Open" },
-  { "key": "customer", "value": "Max Mustermann" },
-  { "key": "country", "value": "Germany" }
-]
-```
-
-### 未找到记录
-
-```json
-[
-  { "key": "cas_found", "value": "no" },
-  { "key": "cas", "value": "CAS-123456" }
-]
-```
-
-## 错误码说明
-
-- `200` - 查询成功，包含记录或未找到
-- `400` - 客户端请求错误，例如缺失 `cas` 或无效 JSON
-- `401` - 鉴权失败，例如缺失或错误的 `Authorization` header
-- `500` - 服务内部异常，例如飞书 API 调用失败或环境变量缺失
-
-## 日志与健壮性
-
-服务使用 Python 标准 `logging`：
-
-- 记录收到请求
-- 记录查询 CAS
-- 记录飞书查询成功或未找到
-- 记录异常信息
-
-服务不会在日志中打印 `app_secret`、`tenant_access_token` 或 `TRANGO_SHARED_SECRET`。
-
-## 进一步扩展
-
-当前实现已保留以下扩展空间：
-
-- Token 缓存
-- 更多字段映射
-- 多表查询
-- 写回飞书
-- 支持更多业务键，而不仅是 CAS
+| 状态码 | 说明 |
+|---|---|
+| 200 | 查询成功 |
+| 400 | 请求无效（缺少 cas 字段、无效 JSON） |
+| 401 | 鉴权失败（缺少或错误的 Authorization header） |
+| 500 | 服务内部异常（飞书 API 失败、环境变量缺失） |
