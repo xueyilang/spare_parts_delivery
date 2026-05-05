@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
@@ -35,18 +36,8 @@ FORWARDER_MAP = {
 }
 
 
-def _extract_before_chinese(text: str) -> str:
-    for i, ch in enumerate(text):
-        if '一' <= ch <= '鿿':
-            result = text[:i]
-            while result and not (result[-1].isalnum() or result[-1].isspace()):
-                result = result[:-1]
-            return result.strip()
-    return text
-
-
-def _looks_like_tracking(value: str) -> bool:
-    return bool(value) and any(ch.isdigit() for ch in value)
+_CN_PATTERN = re.compile(r"[一-鿿]+")
+_SEP_PATTERN = re.compile(r"[,/]+")
 
 
 def clean_tracking(value: str) -> str:
@@ -58,12 +49,24 @@ def clean_tracking(value: str) -> str:
         return ""
     if value.startswith("LHZ-DPD"):
         return ""
-    if any("一" <= ch <= "鿿" for ch in value):
-        extracted = _extract_before_chinese(value)
-        if _looks_like_tracking(extracted):
-            return extracted.strip()
-        return ""
-    return value.strip()
+
+    value = value.strip()
+    value = _CN_PATTERN.sub(",", value)
+
+    parts = _SEP_PATTERN.split(value)
+    numbers = []
+    for p in parts:
+        p = p.strip()
+        digits = sum(1 for c in p if c.isdigit())
+        if digits < 2:
+            continue
+        while p and not p[0].isdigit():
+            p = p[1:]
+        while p and not p[-1].isdigit():
+            p = p[:-1]
+        if p and sum(1 for c in p if c.isdigit()) >= 2:
+            numbers.append(p)
+    return ", ".join(numbers)
 
 
 def clean_status(value: str) -> str:

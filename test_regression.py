@@ -49,10 +49,10 @@ t("NTS物流-DHL → empty", clean_tracking("NTS物流-DHL") == "")
 t("NTS物流 statt11677714 → empty", clean_tracking("NTS物流 statt11677714") == "")
 
 # Chinese-annotated tracking (Regression: extract before CN)
-t("601043494079快递改为邮政... → 601043494079",
-  clean_tracking("601043494079快递改为邮政601051439079") == "601043494079")
-t("60104695999(偏远地址)... → 60104695999",
-  clean_tracking("60104695999(偏远地址),60853113806(express)") == "60104695999")
+t("601043494079快递改为邮政... → 601043494079, 601051439079",
+  clean_tracking("601043494079快递改为邮政601051439079") == "601043494079, 601051439079")
+t("60104695999(偏远地址)... → 60104695999, 60853113806",
+  clean_tracking("60104695999(偏远地址),60853113806(express)") == "60104695999, 60853113806")
 t("60853113898,带电池发海运 → 60853113898",
   clean_tracking("60853113898,带电池发海运") == "60853113898")
 
@@ -66,13 +66,15 @@ t("NTS物流 with trailing space → empty", clean_tracking("NTS物流 ") == "")
 t("leading space NTS物流 → empty", clean_tracking(" NTS物流") == "")
 
 # No-CN tracking with special chars
-t("slash in tracking", clean_tracking("60853062530/60853062600") == "60853062530/60853062600")
-t("comma in tracking", clean_tracking("ZHO7CPGE,60104674014") == "ZHO7CPGE,60104674014")
+t("slash in tracking", clean_tracking("60853062530/60853062600") == "60853062530, 60853062600")
+t("alpha+digits mixed → keep only digits", clean_tracking("ZHO7CPGE,60104674014") == "60104674014")
 t("Selbstabholung → empty", clean_tracking("Selbstabholung") == "")
 t("Selbstabholung variant → empty", clean_tracking("Selbstabholung - UK,40257145950397840382") == "")
 t("LHZ-DPD → empty", clean_tracking("LHZ-DPD") == "")
 t("LHZ-DPD-Other → empty", clean_tracking("LHZ-DPD-Other") == "")
 t("LHZ-DPD-Other(Hofheim) → empty", clean_tracking("LHZ-DPD-Other(LHZ-Hofheim)") == "")
+t("multi-tracking CAS-152629", clean_tracking("60105718349,改单60105859391") == "60105718349, 60105859391")
+t("DPD format preserved", clean_tracking("01606817 0146 66") == "01606817 0146 66")
 
 # ═══════════════════════════════════════════════
 # SECTION 2: clean_status
