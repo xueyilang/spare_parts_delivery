@@ -16,11 +16,68 @@ logging.basicConfig(
 logger = logging.getLogger("trengo_feishu_service")
 
 FIELD_MAPPING = {
-    "ticket_number": "客诉号 Ticket Number",
     "tracking_number": "物流单号(发货) Tracking Number",
     "logistics_status": "物流状态 Logistics Status",
     "freight_forwarder": "货代（售后物流发货）Freight Forwarder",
 }
+
+STATUS_MAP = {
+    "Shipped": "Shipped",
+    "已发货": "Shipped",
+    "Shipment cancelled": "Shipment cancelled",
+    "已取消": "Shipment cancelled",
+    "Not processed": "Not processed",
+    "未处理": "Not processed",
+}
+
+FORWARDER_MAP = {
+    "安装商或客户自提": "Self pick-up",
+}
+
+
+def _extract_before_chinese(text: str) -> str:
+    for i, ch in enumerate(text):
+        if '一' <= ch <= '鿿':
+            result = text[:i]
+            while result and not (result[-1].isalnum() or result[-1].isspace()):
+                result = result[:-1]
+            return result.strip()
+    return text
+
+
+def _looks_like_tracking(value: str) -> bool:
+    return bool(value) and any(ch.isdigit() for ch in value)
+
+
+def clean_tracking(value: str) -> str:
+    if not value or not value.strip():
+        return ""
+    if value.startswith("NTS物流"):
+        return ""
+    if any('一' <= ch <= '鿿' for ch in value):
+        extracted = _extract_before_chinese(value)
+        if _looks_like_tracking(extracted):
+            return extracted.strip()
+        return ""
+    return value.strip()
+
+
+def clean_status(value: str) -> str:
+    if not value or not value.strip():
+        return "Unknown"
+    value = value.strip()
+    parts = value.split(" ", 1)
+    if len(parts) > 1 and any("一" <= c <= "鿿" for c in parts[0]):
+        english_part = parts[1].strip()
+    else:
+        english_part = value
+    return STATUS_MAP.get(english_part, english_part)
+
+
+def clean_forwarder(value: str) -> str:
+    if not value or not value.strip():
+        return "Unknown"
+    return FORWARDER_MAP.get(value.strip(), value.strip())
 
 app = Flask(__name__)
 
@@ -69,35 +126,21 @@ def map_record_fields(record_fields: dict) -> dict:
     return mapped
 
 
-def build_single_record_message(cas: str, record: dict) -> str:
-    return (
-        f"我找到了与 {cas} 相关的物流信息："
-        f"物流单号 {record.get('tracking_number', '') or '无'}，"
-        f"当前物流状态为 {record.get('logistics_status', '') or '未知'}，"
-        f"承运商为 {record.get('freight_forwarder', '') or '无'}。"
-    )
+def build_logistics_message(cas: str, record: dict | None) -> str:
+    if record is None:
+        return f"No logistics record found for CAS {cas}."
 
+    status = record.get("logistics_status", "")
+    tracking = record.get("tracking_number", "")
+    forwarder = record.get("freight_forwarder", "")
 
-def build_multiple_records_message(cas: str, records: list[dict]) -> str:
-    lines = [f"我找到了与 {cas} 相关的 {len(records)} 条物流记录："]
-    for index, record in enumerate(records, start=1):
-        line = (
-            f"{index}. 物流单号 {record.get('tracking_number', '') or '无'}，"
-            f"状态 {record.get('logistics_status', '') or '未知'}，"
-            f"承运商 {record.get('freight_forwarder', '') or '无'}。"
-        )
-        lines.append(line)
-    return "\n".join(lines)
+    if status != "Shipped":
+        return f"Status: {status}."
 
+    if tracking:
+        return f"Tracking number: {tracking}, Status: {status}, Forwarder: {forwarder}."
 
-def build_ai_message(cas: str, mapped_records: list[dict]) -> str:
-    if not mapped_records:
-        return f"未找到与 {cas} 相关的物流记录。请确认 CAS 编号是否正确。"
-
-    if len(mapped_records) == 1:
-        return build_single_record_message(cas, mapped_records[0])
-
-    return build_multiple_records_message(cas, mapped_records)
+    return f"Tracking number: not available, Status: {status}, Forwarder: {forwarder}."
 
 
 @app.route("/", methods=["GET"])
@@ -160,8 +203,23 @@ def lookup_cas():
         logger.exception("Unexpected error while processing CAS lookup")
         return make_json_error("Internal server error", 500)
 
-    mapped_records = [map_record_fields(record) for record in record_fields]
-    ai_message = build_ai_message(cas, mapped_records)
+    if record_fields:
+        best = record_fields[0]
+        for rec in record_fields:
+            raw_trk = rec.get("物流单号(发货) Tracking Number", "")
+            if raw_trk and not raw_trk.startswith("NTS物流"):
+                best = rec
+                break
+        raw = map_record_fields(best)
+        record = {
+            "tracking_number": clean_tracking(raw.get("tracking_number", "")),
+            "logistics_status": clean_status(raw.get("logistics_status", "")),
+            "freight_forwarder": clean_forwarder(raw.get("freight_forwarder", "")),
+        }
+    else:
+        record = None
+
+    ai_message = build_logistics_message(cas, record)
 
     logger.info("Returning ai_message for CAS %s", cas)
     return jsonify({"ai_message": ai_message}), 200
