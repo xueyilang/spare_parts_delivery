@@ -40,8 +40,8 @@ print("=" * 60)
 # Normal cases
 t("normal GLS number", clean_tracking("60104324929") == "60104324929")
 t("normal Cargoboard number", clean_tracking("11665490") == "11665490")
-t("LHZ-DPD identifier", clean_tracking("LHZ-DPD") == "LHZ-DPD")
-t("Selbstabholung", clean_tracking("Selbstabholung") == "Selbstabholung")
+t("LHZ-DPD identifier", clean_tracking("LHZ-DPD") == "")
+t("Selbstabholung", clean_tracking("Selbstabholung") == "")
 
 # NTS placeholders (Regression: Bug fix - startswith NTS物流)
 t("NTS物流 → empty", clean_tracking("NTS物流") == "")
@@ -68,6 +68,11 @@ t("leading space NTS物流 → empty", clean_tracking(" NTS物流") == "")
 # No-CN tracking with special chars
 t("slash in tracking", clean_tracking("60853062530/60853062600") == "60853062530/60853062600")
 t("comma in tracking", clean_tracking("ZHO7CPGE,60104674014") == "ZHO7CPGE,60104674014")
+t("Selbstabholung → empty", clean_tracking("Selbstabholung") == "")
+t("Selbstabholung variant → empty", clean_tracking("Selbstabholung - UK,40257145950397840382") == "")
+t("LHZ-DPD → empty", clean_tracking("LHZ-DPD") == "")
+t("LHZ-DPD-Other → empty", clean_tracking("LHZ-DPD-Other") == "")
+t("LHZ-DPD-Other(Hofheim) → empty", clean_tracking("LHZ-DPD-Other(LHZ-Hofheim)") == "")
 
 # ═══════════════════════════════════════════════
 # SECTION 2: clean_status
@@ -177,9 +182,9 @@ check_msg("shipped+Cargoboard", "CAS-4", {"tracking_number": "11665490", "logist
 check_msg("shipped+NTS", "CAS-5", {"tracking_number": "", "logistics_status": "Shipped", "freight_forwarder": "NTS-Logistik Partner"},
           ["Tracking number: not available", "Status: Shipped", "Forwarder: NTS-Logistik Partner"])
 
-# Shipped + self pick-up
-check_msg("shipped+selfpickup", "CAS-6", {"tracking_number": "Selbstabholung", "logistics_status": "Shipped", "freight_forwarder": "Self pick-up"},
-          ["Tracking number: Selbstabholung", "Status: Shipped", "Forwarder: Self pick-up"])
+# Shipped + self pick-up (tracking = Selbstabholung → cleaned to empty)
+check_msg("shipped+selfpickup", "CAS-6", {"tracking_number": "", "logistics_status": "Shipped", "freight_forwarder": "Self pick-up"},
+          ["Tracking number: not available", "Status: Shipped", "Forwarder: Self pick-up"])
 
 # Edge: unknown status (not in STATUS_MAP)
 check_msg("unknown status", "CAS-7", {"tracking_number": "12345", "logistics_status": "Delivered", "freight_forwarder": "FedEx"},
@@ -262,12 +267,13 @@ with app.test_client() as client:
     t("CAS-145263 (NTS only): not available", "not available" in msg, f"msg={msg}")
     t("CAS-145263 (NTS only): has NTS forwarder", "NTS-Logistik Partner" in msg, f"msg={msg}")
 
-    # Self pick-up regression
+    # Self pick-up regression (Selbstabholung → not available)
     r = client.post("/lookup-cas", json={"cas": "CAS-147422"},
                     headers={"Authorization": f"Bearer {secret}"})
     msg = r.json.get("ai_message", "")
     t("CAS-147422 (self pick-up): no CN", not has_cn(msg), f"msg={msg}")
     t("CAS-147422 (self pick-up): Self pick-up", "Self pick-up" in msg, f"msg={msg}")
+    t("CAS-147422 (self pick-up): not available", "not available" in msg, f"msg={msg}")
 
 # ═══════════════════════════════════════════════
 # SECTION 6: All 500 records pipeline test
@@ -319,7 +325,7 @@ for item in items:
         unexpected_forwarders[fwd] += 1
 
     # Check for obviously invalid cleaned tracking
-    if trk and not any(c.isdigit() for c in trk) and trk not in ("LHZ-DPD", "Selbstabholung", "LHZ-DPD-Other", "LHZ-DPD-Other(LHZ-Hofheim)"):
+    if trk and not any(c.isdigit() for c in trk):
         invalid_trackings.append((cas, trk[:60]))
 
     msg = build_logistics_message(cas, {"tracking_number": trk, "logistics_status": sts, "freight_forwarder": fwd})

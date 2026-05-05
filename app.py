@@ -54,7 +54,11 @@ def clean_tracking(value: str) -> str:
         return ""
     if value.startswith("NTS物流"):
         return ""
-    if any('一' <= ch <= '鿿' for ch in value):
+    if "selbstabholung" in value.lower():
+        return ""
+    if value.startswith("LHZ-DPD"):
+        return ""
+    if any("一" <= ch <= "鿿" for ch in value):
         extracted = _extract_before_chinese(value)
         if _looks_like_tracking(extracted):
             return extracted.strip()
