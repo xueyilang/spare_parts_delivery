@@ -142,7 +142,9 @@ def build_logistics_message(cas: str, record: dict | None) -> str:
     forwarder = record.get("freight_forwarder", "")
 
     if status != "Shipped":
-        return f"Status: {status}."
+        if status == "Shipment cancelled":
+            return f"Status: {status}."
+        return "Status: Shipment planned."
 
     if tracking:
         return f"Tracking number: {tracking}, Status: {status}, Forwarder: {forwarder}."

@@ -168,11 +168,15 @@ def check_msg(name, cas, record, expects, not_expects=None):
 # Not found
 check_msg("not found", "CAS-999", None, ["No logistics record found", "CAS-999"], ["Tracking", "Status", "Forwarder"])
 
-# Non-shipped: only status
+# Cancelled: shown separately as cancelled
 check_msg("cancelled", "CAS-1", {"tracking_number": "", "logistics_status": "Shipment cancelled", "freight_forwarder": ""},
           ["Status: Shipment cancelled"], ["Tracking number", "Forwarder"])
-check_msg("not processed", "CAS-2", {"tracking_number": "", "logistics_status": "Not processed", "freight_forwarder": ""},
-          ["Status: Not processed"], ["Tracking number", "Forwarder"])
+# Has record but no tracking yet (not shipped, not cancelled) → Shipment planned
+check_msg("not processed → planned", "CAS-2", {"tracking_number": "", "logistics_status": "Not processed", "freight_forwarder": ""},
+          ["Status: Shipment planned"], ["Tracking number", "Forwarder"])
+check_msg("warehouse waiting SN → planned", "CAS-2b",
+          {"tracking_number": "", "logistics_status": "Warehouse notified, waiting for SN", "freight_forwarder": ""},
+          ["Status: Shipment planned"], ["Tracking number", "Forwarder"])
 
 # Shipped + valid tracking
 check_msg("shipped+GLS", "CAS-3", {"tracking_number": "60104324929", "logistics_status": "Shipped", "freight_forwarder": "GLS"},
@@ -188,9 +192,9 @@ check_msg("shipped+NTS", "CAS-5", {"tracking_number": "", "logistics_status": "S
 check_msg("shipped+selfpickup", "CAS-6", {"tracking_number": "", "logistics_status": "Shipped", "freight_forwarder": "Self pick-up"},
           ["Tracking number: not available", "Status: Shipped", "Forwarder: Self pick-up"])
 
-# Edge: unknown status (not in STATUS_MAP)
-check_msg("unknown status", "CAS-7", {"tracking_number": "12345", "logistics_status": "Delivered", "freight_forwarder": "FedEx"},
-          ["Status: Delivered"], ["Tracking number", "Forwarder"])
+# Edge: non-shipped, non-cancelled status → treated as Shipment planned (stray tracking ignored)
+check_msg("unknown non-shipped → planned", "CAS-7", {"tracking_number": "12345", "logistics_status": "Delivered", "freight_forwarder": "FedEx"},
+          ["Status: Shipment planned"], ["Tracking number", "Forwarder"])
 
 # ═══════════════════════════════════════════════
 # SECTION 5: Flask endpoint integration
